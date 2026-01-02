@@ -14,6 +14,12 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [role, setRole] = useState('family'); // Default to 'family'
 
+  const [passwordError, setPasswordError] = useState("");
+
+const passwordRegex =
+  /^(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])[A-Za-z\d@$!%*?&#]{8,}$/;
+
+
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -59,6 +65,8 @@ export default function LoginPage() {
     } catch (error) {
       console.error("Login Error:", error);
       alert("Server error. Is the backend running?");
+      alert(data.error);
+
     } finally {
       setLoading(false);
     }
@@ -102,14 +110,34 @@ export default function LoginPage() {
               <label className="block text-sm font-bold text-slate-700 mb-2 ml-1">Password</label>
               <div className="relative">
                 <Lock className="absolute left-4 top-3.5 w-5 h-5 text-slate-400" />
-                <input 
-                  type="password" 
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  required
-                  className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
-                />
+               <input 
+  type="password" 
+  value={password}
+  onChange={(e) => {
+    const value = e.target.value;
+    setPassword(value);
+
+    if (!passwordRegex.test(value)) {
+      setPasswordError(
+        "Password must contain 1 capital letter, 1 number, 1 symbol & be 8+ characters"
+      );
+    } else {
+      setPasswordError("");
+    }
+  }}
+  placeholder="••••••••"
+  required
+  className={`w-full pl-12 pr-4 py-3 bg-slate-50 border rounded-xl focus:outline-none focus:ring-2 transition
+    ${passwordError 
+      ? "border-red-400 focus:ring-red-400" 
+      : "border-slate-200 focus:ring-blue-500"}`}
+ />
+  {passwordError && (
+  <p className="text-red-500 text-xs mt-2 ml-1">
+    {passwordError}
+  </p>
+)}
+
               </div>
             </div>
 
@@ -142,10 +170,11 @@ export default function LoginPage() {
 
             {/* Submit Button */}
             <button 
-              type="submit" 
-              disabled={loading}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-200 active:scale-95 transition flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
-            >
+  type="submit" 
+  disabled={loading || passwordError}
+  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-200 active:scale-95 transition flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+>
+
               {loading ? <Loader2 className="animate-spin w-5 h-5"/> : "Sign In"}
               {!loading && <ArrowRight className="w-5 h-5" />}
             </button>
