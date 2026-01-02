@@ -35,7 +35,7 @@ export default function ElderDashboard() {
   const fetchMedicines = async (email) => {
     if (!email) return;
     try {
-      const response = await fetch(`http://localhost:5000/medicines?email=${email}`);
+      const response = await fetch(`https://care-nest-backend.vercel.app/medicines?email=${email}`);
       const dbData = await response.json();
       
       const formattedData = dbData.map(item => ({
