@@ -63,7 +63,7 @@ export default function FamilyDashboard() {
     // 2. Fetch data for THIS user
     fetchMedicines(userData.email); 
 
-    const socket = io(https://carenestbackend-1.onrender.com");
+    const socket = io("https://carenestbackend-1.onrender.com");
     socket.on("REFRESH_DATA", () => fetchMedicines(userData.email));
 
     // Local heartbeat
