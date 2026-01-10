@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { CheckCircle, XCircle, Clock, ArrowLeft, AlertTriangle, Loader2, ShieldAlert, Package, User, LayoutDashboard } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, ArrowLeft, AlertTriangle, Loader2, ShieldAlert, Package, LayoutDashboard } from 'lucide-react';
 import { io } from "socket.io-client";
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -12,8 +12,9 @@ export default function ElderDashboard() {
   const [loading, setLoading] = useState(true);
   const [displayDate, setDisplayDate] = useState('');
   const [currentUser, setCurrentUser] = useState(null); 
-  
   const [sosStatus, setSosStatus] = useState('idle'); 
+
+  const BACKEND_URL = "https://carenestbackend-1.onrender.com";
 
   // --- HELPER ---
   const calculateRealStatus = (med) => {
@@ -35,7 +36,7 @@ export default function ElderDashboard() {
   const fetchMedicines = async (email) => {
     if (!email) return;
     try {
-      const response = await fetch(`https://carenestbackend-1.onrender.com/medicines?email=${email}`);
+      const response = await fetch(`${BACKEND_URL}/medicines?email=${email}`);
       const dbData = await response.json();
       
       const formattedData = dbData.map(item => ({
@@ -43,10 +44,13 @@ export default function ElderDashboard() {
         id: item._id,
         status: calculateRealStatus(item)
       }));
+      
       formattedData.sort((a, b) => new Date('1970/01/01 ' + a.time) - new Date('1970/01/01 ' + b.time));
       setMedicines(formattedData);
       setLoading(false);
-    } catch (error) { console.error("API Error:", error); }
+    } catch (error) { 
+      console.error("API Error:", error); 
+    }
   };
 
   // --- INIT ---
@@ -61,7 +65,10 @@ export default function ElderDashboard() {
 
     fetchMedicines(userData.email); 
 
-    const socket = io("https://carenestbackend-1.onrender.com");
+    const socket = io(BACKEND_URL, {
+        transports: ['websocket', 'polling']
+    });
+
     socket.on("REFRESH_DATA", () => fetchMedicines(userData.email));
 
     const dateInterval = setInterval(() => {
@@ -71,7 +78,7 @@ export default function ElderDashboard() {
     
     const heartbeat = setInterval(() => {
        setMedicines(prev => prev.map(m => ({ ...m, status: calculateRealStatus(m) })));
-    }, 5000);
+    }, 10000); // Check missed status every 10s
 
     return () => {
       socket.disconnect();
@@ -81,7 +88,6 @@ export default function ElderDashboard() {
   }, []);
 
   // --- SOS LOGIC ---
-  // 1. Check if an alert is already active on load
   useEffect(() => {
     if (currentUser?.email) {
         const raw = localStorage.getItem(`careNest_emergencyAlert_${currentUser.email}`);
@@ -93,7 +99,6 @@ export default function ElderDashboard() {
     }
   }, [currentUser]);
 
-  // 2. Poll for Family Response
   useEffect(() => {
     let interval;
     if (sosStatus === 'waiting' && currentUser?.email) {
@@ -109,20 +114,18 @@ export default function ElderDashboard() {
              }, 8000);
           }
         }
-      }, 1000); 
+      }, 2000); 
     }
     return () => clearInterval(interval);
   }, [sosStatus, currentUser]);
 
   const handleEmergencyClick = () => setSosStatus('confirm');
   
-  // ✅ UPDATED: Trigger SMS via Backend
   const confirmEmergency = async () => {
      setSosStatus('sending');
      const now = new Date();
      const uniqueId = Date.now();
 
-     // 1. Prepare Data
      const alertData = { 
         id: uniqueId,
         active: true, 
@@ -131,33 +134,23 @@ export default function ElderDashboard() {
         message: `Emergency Alert from ${currentUser?.name || 'Elder'}!` 
      };
 
-     // 2. Save to Local Storage (For Web Dashboard Alert)
      if (currentUser?.email) {
          localStorage.setItem(`careNest_emergencyAlert_${currentUser.email}`, JSON.stringify(alertData));
-
          let historyStore = JSON.parse(localStorage.getItem(`careNest_sosHistory_${currentUser.email}`) || '{"date": "", "logs": []}');
          const todayStr = now.toLocaleDateString();
-         
-         if (historyStore.date !== todayStr) {
-            historyStore = { date: todayStr, logs: [] };
-         }
-
+         if (historyStore.date !== todayStr) historyStore = { date: todayStr, logs: [] };
          historyStore.logs.push(alertData);
          localStorage.setItem(`careNest_sosHistory_${currentUser.email}`, JSON.stringify(historyStore));
      }
 
-     // 3. ✅ SEND SMS VIA BACKEND
      try {
-        await fetch('http://localhost:5000/send-sos', {
+        await fetch(`${BACKEND_URL}/send-sos`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                senderName: currentUser?.name || "Elder User" 
-            })
+            body: JSON.stringify({ senderName: currentUser?.name || "Elder User" })
         });
-        // Note: We don't block the UI if SMS fails, the web alert still works
      } catch (error) {
-        console.error("Failed to send SMS:", error);
+        console.error("Failed to send SOS:", error);
      }
 
      setTimeout(() => setSosStatus('waiting'), 1000);
@@ -166,12 +159,23 @@ export default function ElderDashboard() {
   const cancelEmergency = () => setSosStatus('idle');
 
   const handleTakeMedicine = async (id) => {
+    // 1. Optimistically update UI
     setMedicines(prev => prev.map(m => m.id === id ? { ...m, status: 'taken', stock: m.stock > 0 ? m.stock - 1 : 0 } : m));
-    await fetch(`http://localhost:5000/medicines/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: 'taken' })
-    });
+    
+    // 2. Persist to Database on Render
+    try {
+      const res = await fetch(`${BACKEND_URL}/medicines/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'taken' })
+      });
+      
+      if (!res.ok) throw new Error("Database update failed");
+    } catch (error) {
+      console.error("Failed to save 'taken' status:", error);
+      // Re-fetch to sync with server if it failed
+      fetchMedicines(currentUser.email);
+    }
   };
 
   const nextMedicine = medicines.find(m => m.status === 'upcoming');
@@ -184,7 +188,6 @@ export default function ElderDashboard() {
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans p-4 md:p-8">
-      {/* HEADER */}
       <div className="flex justify-between items-end text-white mb-8 border-b pb-4">
         <div>
           <h1 className="text-3xl font-bold text-slate-900">Today's Health</h1>
@@ -194,77 +197,71 @@ export default function ElderDashboard() {
           </p>
         </div>
         <div className="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center font-bold text-slate-600">
-               <Link href="/"><ArrowLeft></ArrowLeft></Link>
+               <Link href="/"><ArrowLeft/></Link>
         </div>
       </div>
 
       {medicines.length === 0 ? (
-          <div className="flex flex-col items-center justify-center p-12 text-center animate-in fade-in duration-500 bg-white rounded-3xl shadow-sm border border-slate-200">
+          <div className="flex flex-col items-center justify-center p-12 text-center bg-white rounded-3xl shadow-sm border border-slate-200">
              <div className="w-24 h-24 bg-emerald-50 rounded-full flex items-center justify-center mb-6">
                 <LayoutDashboard className="w-12 h-12 text-emerald-500"/>
              </div>
-             <h3 className="text-2xl font-bold text-slate-800 mb-2">Welcome to Your Dashboard</h3>
-             <p className="text-slate-500 max-w-md mb-8 text-lg">
-                You don't have any medicines scheduled for today yet. Ask a family member to add your schedule!
-             </p>
+             <h3 className="text-2xl font-bold text-slate-800 mb-2">Welcome</h3>
+             <p className="text-slate-500 max-w-md mb-8 text-lg">No medicines scheduled for today.</p>
              <div className="w-full max-w-sm border-t pt-6">
-                 <p className="text-sm text-slate-400 uppercase font-bold tracking-wider mb-4">Emergency Features Active</p>
                  {sosStatus === 'idle' && (
-                  <button onClick={handleEmergencyClick} className="w-full bg-red-100 text-red-700 py-3 rounded-xl font-bold hover:bg-red-200 transition flex items-center justify-center gap-2">
-                    <AlertTriangle className="w-5 h-5"/> Test Emergency Button
+                  <button onClick={handleEmergencyClick} className="w-full bg-red-100 text-red-700 py-3 rounded-xl font-bold">
+                    <AlertTriangle className="w-5 h-5 inline mr-2"/> SOS Button
                   </button>
                  )}
              </div>
           </div>
       ) : (
         <>
-            {/* STATS */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
                 <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 text-center">
-                <span className="block text-3xl font-bold text-slate-900">{totalMeds}</span>
-                <span className="text-xs text-slate-500 uppercase">Total</span>
+                    <span className="block text-3xl font-bold text-slate-900">{totalMeds}</span>
+                    <span className="text-xs text-slate-500 uppercase">Total</span>
                 </div>
                 <div className="bg-white p-4 rounded-2xl shadow-sm border border-emerald-100 text-center">
-                <span className="block text-3xl font-bold text-emerald-700">{takenMeds}</span>
-                <span className="text-xs text-emerald-600 uppercase">Taken</span>
+                    <span className="block text-3xl font-bold text-emerald-700">{takenMeds}</span>
+                    <span className="text-xs text-emerald-600 uppercase">Taken</span>
                 </div>
                 <div className="bg-white p-4 rounded-2xl shadow-sm border border-red-100 text-center">
-                <span className="block text-3xl font-bold text-red-700">{missedMeds}</span>
-                <span className="text-xs text-red-600 uppercase">Missed</span>
+                    <span className="block text-3xl font-bold text-red-700">{missedMeds}</span>
+                    <span className="text-xs text-red-600 uppercase">Missed</span>
                 </div>
                 <div className="bg-white p-4 rounded-2xl shadow-sm border border-purple-100 text-center">
-                <span className="block text-3xl font-bold text-purple-700">{performance}%</span>
-                <span className="text-xs text-purple-600 uppercase">Score</span>
+                    <span className="block text-3xl font-bold text-purple-700">{performance}%</span>
+                    <span className="text-xs text-purple-600 uppercase">Score</span>
                 </div>
             </div>
 
-            {/* UP NEXT */}
             <div className="max-w-4xl mx-auto mb-8">
                 {nextMedicine ? (
                 <div className="bg-blue-600 rounded-3xl p-8 text-white flex justify-between items-center shadow-xl">
                     <div>
-                    <p className="opacity-80 uppercase text-sm font-bold mb-2">Up Next</p>
-                    <h2 className="text-3xl font-bold">{nextMedicine.name}</h2>
-                    <p className="text-xl mt-1">{nextMedicine.time} • {nextMedicine.dose}</p>
-                    <div className="inline-flex items-center gap-1 mt-3 bg-blue-700 px-3 py-1 rounded-lg text-sm">
-                        <Package className="w-4 h-4"/> Stock: {nextMedicine.stock}
+                        <p className="opacity-80 uppercase text-sm font-bold mb-2">Up Next</p>
+                        <h2 className="text-3xl font-bold">{nextMedicine.name}</h2>
+                        <p className="text-xl mt-1">{nextMedicine.time} • {nextMedicine.dose}</p>
+                        <div className="inline-flex items-center gap-1 mt-3 bg-blue-700 px-3 py-1 rounded-lg text-sm">
+                            <Package className="w-4 h-4"/> Stock: {nextMedicine.stock}
+                        </div>
                     </div>
-                    </div>
-                    <button onClick={() => handleTakeMedicine(nextMedicine.id)} className="bg-white text-blue-700 px-8 py-4 rounded-2xl font-bold text-xl hover:bg-blue-50 transition shadow-lg">Take Now</button>
+                    <button onClick={() => handleTakeMedicine(nextMedicine.id)} className="bg-white text-blue-700 px-8 py-4 rounded-2xl font-bold text-xl hover:bg-blue-50 transition">Take Now</button>
                 </div>
                 ) : (
                 <div className="bg-emerald-100 p-6 rounded-3xl text-center text-emerald-800 font-bold">All caught up!</div>
                 )}
             </div>
 
-            {/* LIST */}
             <div className="max-w-4xl mx-auto space-y-4">
                 {medicines.map((med) => (
                 <div key={med.id} className={`flex justify-between items-center p-5 rounded-2xl border-2 transition-all ${med.status === 'taken' ? 'opacity-60 bg-slate-50' : 'bg-white'} ${med.status === 'missed' ? 'border-red-100 bg-red-50' : ''}`}>
                     <div className="flex items-center gap-4">
-                        {med.status === 'taken' ? <CheckCircle className="text-emerald-500 w-8 h-8"/> : null}
-                        {med.status === 'missed' ? <XCircle className="text-red-500 w-8 h-8"/> : null}
-                        {med.status === 'upcoming' ? <Clock className="text-blue-500 w-8 h-8"/> : null}
+                        {med.status === 'taken' && <CheckCircle className="text-emerald-500 w-8 h-8"/>}
+                        {med.status === 'missed' && <XCircle className="text-red-500 w-8 h-8"/>}
+                        {med.status === 'upcoming' && <Clock className="text-blue-500 w-8 h-8"/>}
                         <div>
                             <h3 className="font-bold text-lg">{med.name}</h3>
                             <div className="flex items-center gap-3 text-slate-500">
@@ -284,45 +281,38 @@ export default function ElderDashboard() {
         </>
       )}
 
-      {/* SOS BUTTON AREA */}
+      {/* SOS SECTION */}
       <div className="max-w-4xl mx-auto mb-8 mt-4">
         {sosStatus === 'idle' && medicines.length > 0 && (
-             <button onClick={handleEmergencyClick} className="w-full bg-red-600 text-white p-6 rounded-2xl font-bold text-xl flex items-center justify-center gap-3 shadow-lg hover:bg-red-700 transition active:scale-95">
-                <div className="bg-white/20 p-2 rounded-full"><AlertTriangle className="w-8 h-8"/></div>
+             <button onClick={handleEmergencyClick} className="w-full bg-red-600 text-white p-6 rounded-2xl font-bold text-xl flex items-center justify-center gap-3 shadow-lg hover:bg-red-700 transition">
+                <AlertTriangle className="w-8 h-8"/>
                 <div className="text-left"><div className="text-2xl">EMERGENCY SOS</div><div className="text-sm font-normal text-red-100">Tap to alert family</div></div>
              </button>
         )}
 
         {sosStatus === 'confirm' && (
-            <div className="flex gap-4 animate-in fade-in slide-in-from-top-2">
+            <div className="flex gap-4">
               <button onClick={cancelEmergency} className="flex-1 bg-slate-200 text-slate-800 font-bold text-xl py-6 rounded-2xl">Cancel</button>
-              <button onClick={confirmEmergency} className="flex-[2] bg-red-600 text-white font-bold text-xl py-6 rounded-2xl flex items-center justify-center gap-2">
-                <ShieldAlert /> Yes, Send Alert
-              </button>
+              <button onClick={confirmEmergency} className="flex-[2] bg-red-600 text-white font-bold text-xl py-6 rounded-2xl flex items-center justify-center gap-2"><ShieldAlert /> Send Alert</button>
             </div>
         )}
 
         {sosStatus === 'sending' && (
-            <div className="bg-red-50 border-2 border-red-100 p-6 rounded-2xl flex items-center justify-center gap-4 text-red-800 font-bold text-xl">
-               <Loader2 className="animate-spin w-8 h-8" /> Sending Alert...
-            </div>
+            <div className="bg-red-50 border-2 border-red-100 p-6 rounded-2xl flex items-center justify-center gap-4 text-red-800 font-bold text-xl"><Loader2 className="animate-spin" /> Sending...</div>
         )}
 
         {sosStatus === 'waiting' && (
             <div className="bg-amber-100 border-2 border-amber-200 p-8 rounded-2xl text-center">
                <Loader2 className="animate-spin w-12 h-12 text-amber-600 mx-auto mb-4" />
                <h3 className="text-2xl font-bold text-amber-900">Alert Sent!</h3>
-               <p className="text-amber-800 mt-2">Waiting for family to respond...</p>
+               <p className="text-amber-800 mt-2">Family has been notified.</p>
             </div>
         )}
 
         {sosStatus === 'acknowledged' && (
-            <div className="bg-emerald-600 text-white p-8 rounded-2xl flex items-center justify-center gap-6 shadow-xl animate-in zoom-in">
+            <div className="bg-emerald-600 text-white p-8 rounded-2xl flex items-center justify-center gap-6 shadow-xl">
                <CheckCircle className="w-16 h-16 text-white" />
-               <div className="text-left">
-                  <h3 className="text-3xl font-bold">Help is Coming!</h3>
-                  <p className="text-emerald-100 text-lg">Family has seen your alert.</p>
-               </div>
+               <div className="text-left"><h3 className="text-3xl font-bold">Help is Coming!</h3><p className="text-emerald-100 text-lg">Response received.</p></div>
             </div>
         )}
       </div>
