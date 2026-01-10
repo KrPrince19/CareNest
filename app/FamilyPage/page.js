@@ -38,7 +38,7 @@ export default function FamilyDashboard() {
   const fetchMedicines = async (email) => {
       if(!email) return;
       try {
-        const response = await fetch(`https://care-nest-backend.vercel.app/medicines?email=${email}`);
+        const response = await fetch(`https://carenestbackend-1.onrender.com/medicines?email=${email}`);
         const dbData = await response.json();
         
         const processed = dbData.map(med => ({ ...med, status: calculateRealStatus(med) }));
@@ -63,7 +63,7 @@ export default function FamilyDashboard() {
     // 2. Fetch data for THIS user
     fetchMedicines(userData.email); 
 
-    const socket = io("http://localhost:5000");
+    const socket = io(https://carenestbackend-1.onrender.com");
     socket.on("REFRESH_DATA", () => fetchMedicines(userData.email));
 
     // Local heartbeat
