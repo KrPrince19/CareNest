@@ -26,7 +26,7 @@ export default function ResetPassword() {
     setLoading(true);
 
     try {
-      const res = await fetch("https://care-nest-backend.vercel.app/reset-password-direct", {
+      const res = await fetch("https://carenestbackend-1.onrender.com/reset-password-direct", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
