@@ -25,7 +25,7 @@ const passwordRegex =
     setLoading(true);
 
     try {
-      const response = await fetch("https://care-nest-backend.vercel.app/login", {
+      const response = await fetch("https://carenestbackend-1.onrender.com/login", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
