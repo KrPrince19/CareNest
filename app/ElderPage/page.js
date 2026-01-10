@@ -61,7 +61,7 @@ export default function ElderDashboard() {
 
     fetchMedicines(userData.email); 
 
-    const socket = io("http://localhost:5000");
+    const socket = io("https://carenestbackend-1.onrender.com");
     socket.on("REFRESH_DATA", () => fetchMedicines(userData.email));
 
     const dateInterval = setInterval(() => {
