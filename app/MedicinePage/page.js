@@ -82,7 +82,7 @@ export default function AddMedicinePage() {
     };
 
     try {
-      const response = await fetch('https://care-nest-backend.vercel.app/medicines', {
+      const response = await fetch('https://carenestbackend-1.onrender.com/medicines', {
         method: 'POST',
         headers: { 
             'Content-Type': 'application/json',
