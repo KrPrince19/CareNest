@@ -17,7 +17,7 @@ export default function FamilyDashboard() {
   const router = useRouter();
 
   // CONSTANTS
-  const BACKEND_URL = "https://carenestbackend-1.onrender.com";
+  const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
 
   // --- HELPER: STATUS LOGIC ---
   const calculateRealStatus = (med) => {

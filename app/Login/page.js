@@ -25,7 +25,7 @@ const passwordRegex =
     setLoading(true);
 
     try {
-      const response = await fetch("https://carenestbackend-1.onrender.com/login", {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

@@ -14,7 +14,7 @@ export default function ElderDashboard() {
   const [currentUser, setCurrentUser] = useState(null); 
   const [sosStatus, setSosStatus] = useState('idle'); 
 
-  const BACKEND_URL = "https://carenestbackend-1.onrender.com";
+  const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
 
   // --- HELPER ---
   const calculateRealStatus = (med) => {

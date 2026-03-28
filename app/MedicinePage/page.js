@@ -82,7 +82,7 @@ export default function AddMedicinePage() {
     };
 
     try {
-      const response = await fetch('https://carenestbackend-1.onrender.com/medicines', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/medicines`, {
         method: 'POST',
         headers: { 
             'Content-Type': 'application/json',
