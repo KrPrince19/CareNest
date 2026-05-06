@@ -1,0 +1,31 @@
+
+
+version: "3.9"
+
+services:
+  frontend:
+    build: .
+    container_name: carenest_frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=development
+      - HOST=0.0.0.0
+    command: npm run dev
+
+  backend:
+    build: ../CareNestBackend
+    container_name: carenest_backend
+    ports:
+      - "5000:5000"
+    volumes:
+      - ../CareNestBackend:/app
+      - /app/node_modules
+    env_file:
+      - ../CareNestBackend/.env
+    command: npm run dev
